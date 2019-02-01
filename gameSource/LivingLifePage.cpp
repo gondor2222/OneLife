@@ -45,8 +45,11 @@
 #include <stdlib.h>//#include <math.h>
 
 
-#define MAP_D 64
+#define MAP_D 64 //64
 #define MAP_NUM_CELLS 4096
+
+#define MOVE_PANEL_X 640
+#define MOVE_PANEL_Y 360
 
 extern int versionNumber;
 extern int dataVersionNumber;
@@ -812,7 +815,6 @@ typedef enum messageType {
     MONUMENT_CALL,
     GRAVE,
     GRAVE_MOVE,
-    FLIGHT_DEST,
     FORCED_SHUTDOWN,
     PONG,
     COMPRESSED_MESSAGE,
@@ -918,9 +920,6 @@ messageType getMessageType( char *inMessage ) {
         }
     else if( strcmp( copy, "GM" ) == 0 ) {
         returnValue = GRAVE_MOVE;
-        }
-    else if( strcmp( copy, "FD" ) == 0 ) {
-        returnValue = FLIGHT_DEST;
         }
     else if( strcmp( copy, "PONG" ) == 0 ) {
         returnValue = PONG;
@@ -1131,19 +1130,11 @@ char *getNextServerMessage() {
                         }
                     }
                 else if( t == MAP_CHUNK ||
-                         t == PONG ||
-                         t == FLIGHT_DEST ) {
+                         t == PONG ) {
                     // map chunks are followed by compressed data
                     // they cannot be queued
                     
                     // PONG messages should be returned instantly
-                    
-                    // FLIGHT_DEST messages also should be returned instantly
-                    // otherwise, they will be queued and seen by 
-                    // the client after the corresponding MC message
-                    // for the new location.
-                    // which will invalidate the map around player's old
-                    // location
                     return message;
                     }
                 else {
@@ -1793,8 +1784,8 @@ int ourID;
 char lastCharUsed = 'A';
 
 char mapPullMode = false;
-int mapPullStartX = -10;
-int mapPullEndX = 10;
+int mapPullStartX = -5; //-10
+int mapPullEndX = 5; //10
 int mapPullStartY = -10;
 int mapPullEndY = 10;
 
@@ -2009,16 +2000,16 @@ LivingLifePage::LivingLifePage()
     
     
     mNotePaperHideOffset.x = -242;
-    mNotePaperHideOffset.y = -420;
+    mNotePaperHideOffset.y = -420 - MOVE_PANEL_Y;
 
 
     mHomeSlipHideOffset.x = 0;
-    mHomeSlipHideOffset.y = -360;
+    mHomeSlipHideOffset.y = -360 - MOVE_PANEL_Y;
 
 
     for( int i=0; i<NUM_YUM_SLIPS; i++ ) {    
         mYumSlipHideOffset[i].x = -600;
-        mYumSlipHideOffset[i].y = -330;
+        mYumSlipHideOffset[i].y = -330 - MOVE_PANEL_Y;
         }
     
     mYumSlipHideOffset[2].x += 70;
@@ -2032,10 +2023,10 @@ LivingLifePage::LivingLifePage()
 
     for( int i=0; i<3; i++ ) {    
         mHungerSlipShowOffsets[i].x = -540;
-        mHungerSlipShowOffsets[i].y = -250;
+        mHungerSlipShowOffsets[i].y = -250 - MOVE_PANEL_Y;
     
         mHungerSlipHideOffsets[i].x = -540;
-        mHungerSlipHideOffsets[i].y = -370;
+        mHungerSlipHideOffsets[i].y = -370 - MOVE_PANEL_Y;
         
         mHungerSlipWiggleTime[i] = 0;
         mHungerSlipWiggleAmp[i] = 0;
@@ -2072,8 +2063,8 @@ LivingLifePage::LivingLifePage()
         mHintSheetSprites[i] = loadSprite( name, false );
         delete [] name;
         
-        mHintHideOffset[i].x = 900;
-        mHintHideOffset[i].y = -370;
+        mHintHideOffset[i].x = 900 + MOVE_PANEL_X;
+        mHintHideOffset[i].y = -370 - MOVE_PANEL_Y;
         
         mHintTargetOffset[i] = mHintHideOffset[i];
         mHintPosOffset[i] = mHintHideOffset[i];
@@ -2114,7 +2105,7 @@ LivingLifePage::LivingLifePage()
 
     for( int i=0; i<NUM_HINT_SHEETS; i++ ) {
         
-        mTutorialHideOffset[i].x = -914;
+        mTutorialHideOffset[i].x = -914 - MOVE_PANEL_X;
         mTutorialFlips[i] = false;
         
         if( i % 2 == 1 ) {
@@ -2123,7 +2114,7 @@ LivingLifePage::LivingLifePage()
             mTutorialFlips[i] = true;
             }
         
-        mTutorialHideOffset[i].y = 430;
+        mTutorialHideOffset[i].y = 430 + MOVE_PANEL_Y;
         
         mTutorialTargetOffset[i] = mTutorialHideOffset[i];
         mTutorialPosOffset[i] = mTutorialHideOffset[i];
@@ -4131,7 +4122,7 @@ void LivingLifePage::drawHungerMaxFillLine( doublePair inAteWordsPos,
     
     
     doublePair barPos = { lastScreenViewCenter.x - 590, 
-                          lastScreenViewCenter.y - 334 };
+                          lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
     barPos.x -= 12;
     barPos.y -= 10;
     
@@ -4300,7 +4291,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         drawSquare( lastScreenViewCenter, 100 );
         
         setDrawColor( 1, 1, 1, 1 );
-        doublePair pos = { lastScreenViewCenter.x, lastScreenViewCenter.y };
+        doublePair pos = { 0, 0 };
         
 
        
@@ -4348,9 +4339,6 @@ void LivingLifePage::draw( doublePair inViewCenter,
         else if( userReconnect ) {
             drawMessage( "waitingReconnect", pos );
             }
-        else if( mPlayerInFlight ) {
-            drawMessage( "waitingArrival", pos );
-            }
         else if( userTwinCode == NULL ) {
             drawMessage( "waitingBirth", pos );
             }
@@ -4380,27 +4368,27 @@ void LivingLifePage::draw( doublePair inViewCenter,
         
         if( mStartedLoadingFirstObjectSet ) {
             
-            pos.y -= 100;
+            pos.y = -100;
             drawMessage( "loadingMap", pos );
 
             // border
             setDrawColor( 1, 1, 1, 1 );
     
-            drawRect( pos.x - 100, pos.y - 120, 
-                      pos.x + 100, pos.y - 100 );
+            drawRect( -100, -220, 
+                      100, -200 );
 
             // inner black
             setDrawColor( 0, 0, 0, 1 );
             
-            drawRect( pos.x - 98, pos.y - 118, 
-                      pos.x + 98, pos.y - 102 );
+            drawRect( -98, -218, 
+                      98, -202 );
     
     
             // progress
             setDrawColor( .8, .8, .8, 1 );
-            drawRect( pos.x - 98, pos.y - 118, 
-                      pos.x - 98 + mFirstObjectSetLoadingProgress * ( 98 * 2 ), 
-                      pos.y - 102 );
+            drawRect( -98, -218, 
+                      -98 + mFirstObjectSetLoadingProgress * ( 98 * 2 ), 
+                      -202 );
             }
         
         return;
@@ -4423,12 +4411,12 @@ void LivingLifePage::draw( doublePair inViewCenter,
         lrintf( lastScreenViewCenter.y / CELL_D ) - mMapOffsetY + mMapD/2;
     
     // more on left and right of screen to avoid wide object tops popping in
-    int xStart = gridCenterX - 7;
-    int xEnd = gridCenterX + 7;
+    int xStart = gridCenterX - 11; //7
+    int xEnd = gridCenterX + 11; //7
 
     // more on bottom of screen so that tall objects don't pop in
-    int yStart = gridCenterY - 6;
-    int yEnd = gridCenterY + 4;
+    int yStart = gridCenterY - 9; //6
+    int yEnd = gridCenterY + 7; //4
 
     if( xStart < 0 ) {
         xStart = 0;
@@ -4470,11 +4458,11 @@ void LivingLifePage::draw( doublePair inViewCenter,
     // tiles drawn on top).  However, given that we're not drawing anything
     // else out there, this should be okay from a performance standpoint.
 
-    int yStartFloor = gridCenterY - 4;
-    int yEndFloor = gridCenterY + 4;
+    int yStartFloor = gridCenterY - 6; //4
+    int yEndFloor = gridCenterY + 6; //4
 
-    int xStartFloor = gridCenterX - 6;
-    int xEndFloor = gridCenterX + 6;
+    int xStartFloor = gridCenterX - 10; //6
+    int xEndFloor = gridCenterX + 10; //6
 
     
 
@@ -7360,7 +7348,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
     // info panel at bottom
     setDrawColor( 1, 1, 1, 1 );
     doublePair panelPos = lastScreenViewCenter;
-    panelPos.y -= 242 + 32 + 16 + 6;
+    panelPos.y -= 242 + 32 + 16 + 6 + MOVE_PANEL_Y;
     drawSprite( mGuiPanelSprite, panelPos );
 
     if( ourLiveObject != NULL &&
@@ -7391,11 +7379,27 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
         // show as a sigil to right of temp meter
         doublePair curseTokenPos = { lastScreenViewCenter.x + 621, 
-                                     lastScreenViewCenter.y - 316 };
+                                     lastScreenViewCenter.y - 316 - MOVE_PANEL_Y};
         curseTokenFont->drawString( "C", curseTokenPos, alignCenter );
         curseTokenFont->drawString( "+", curseTokenPos, alignCenter );
         curseTokenPos.x += 6;
         curseTokenFont->drawString( "X", curseTokenPos, alignCenter );
+        
+        doublePair coordPosX = { lastScreenViewCenter.x + 701,
+                                lastScreenViewCenter.y - 316 - MOVE_PANEL_Y};
+        doublePair coordPosY = { lastScreenViewCenter.x + 701,
+                                lastScreenViewCenter.y - 346 - MOVE_PANEL_Y}; //TODO TEST
+        doublePair coordBoxPos = { lastScreenViewCenter.x + 721,
+                                lastScreenViewCenter.y - 326 - MOVE_PANEL_Y};
+        setDrawColor(1.0, 1.0, 1.0, 1.0);
+        drawSprite( mYumSlipSprites[0], coordBoxPos);
+        setDrawColor(1.0, 0.0, 0.0, 1.0);
+        
+        
+        char* coordStringX = autoSprintf("%d", mMapOffsetX);
+        char* coordStringY = autoSprintf("%d", mMapOffsetY);
+        pencilFont->drawString(coordStringX, coordPosX, alignLeft);
+        pencilFont->drawString(coordStringY, coordPosY, alignLeft);
         
         
         // for now, we receive at most one update per life, so
@@ -7418,7 +7422,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
         for( int i=0; i<ourLiveObject->foodCapacity; i++ ) {
             doublePair pos = { lastScreenViewCenter.x - 590, 
-                               lastScreenViewCenter.y - 334 };
+                               lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
         
             pos.x += i * 30;
             drawSprite( 
@@ -7439,7 +7443,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         for( int i=ourLiveObject->foodCapacity; 
              i < ourLiveObject->maxFoodCapacity; i++ ) {
             doublePair pos = { lastScreenViewCenter.x - 590, 
-                               lastScreenViewCenter.y - 334 };
+                               lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
             
             pos.x += i * 30;
             drawSprite( 
@@ -7457,7 +7461,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
                 
         
         doublePair pos = { lastScreenViewCenter.x + 546, 
-                           lastScreenViewCenter.y - 319 };
+                           lastScreenViewCenter.y - 319 - MOVE_PANEL_Y};
 
         if( mCurrentArrowHeat != -1 ) {
             
@@ -7519,7 +7523,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
         for( int i=0; i<mOldDesStrings.size(); i++ ) {
             doublePair pos = { lastScreenViewCenter.x, 
-                               lastScreenViewCenter.y - 313 };
+                               lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
             float fade =
                 mOldDesFades.getElementDirect( i );
             
@@ -7529,7 +7533,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
             }
 
         doublePair yumPos = { lastScreenViewCenter.x - 480, 
-                              lastScreenViewCenter.y - 313 };
+                              lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
         
         setDrawColor( 0, 0, 0, 1 );
         if( mYumBonus > 0 ) {    
@@ -7553,7 +7557,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
 
         doublePair atePos = { lastScreenViewCenter.x, 
-                              lastScreenViewCenter.y - 347 };
+                              lastScreenViewCenter.y - 347 - MOVE_PANEL_Y};
         
         int shortestFill = 100;
         
@@ -7638,7 +7642,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
             
             
             doublePair pos = { lastScreenViewCenter.x, 
-                               lastScreenViewCenter.y - 313 };
+                               lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
 
             char *des = NULL;
             char *desToDelete = NULL;
@@ -10437,61 +10441,6 @@ void LivingLifePage::step() {
                         g->worldPos.x = posXNew;
                         g->worldPos.y = posYNew;
                         }    
-                    }
-                }            
-            }
-        else if( type == FLIGHT_DEST ) {
-            int posX, posY, playerID;
-            
-            int numRead = sscanf( message, "FD\n%d %d %d",
-                                  &playerID, &posX, &posY );
-            if( numRead == 3 ) {
-                applyReceiveOffset( &posX, &posY );
-                
-                LiveObject *flyingPerson = getLiveObject( playerID );
-                
-                if( flyingPerson != NULL ) {
-                    // move them there instantly
-                    flyingPerson->xd = posX;
-                    flyingPerson->yd = posY;
-                    
-                    flyingPerson->xServer = posX;
-                    flyingPerson->yServer = posY;
-                    
-                    flyingPerson->currentPos.x = posX;
-                    flyingPerson->currentPos.y = posY;
-                    
-                    flyingPerson->currentSpeed = 0;
-                    flyingPerson->currentGridSpeed = 0;
-                    flyingPerson->destTruncated = false;
-                    
-                    flyingPerson->currentMoveDirection.x = 0;
-                    flyingPerson->currentMoveDirection.y = 0;
-                    
-                    if( flyingPerson->pathToDest != NULL ) {
-                        delete [] flyingPerson->pathToDest;
-                        flyingPerson->pathToDest = NULL;
-                        }
-
-                    flyingPerson->inMotion = false;
-                        
-
-                    if( flyingPerson->id == ourID ) {
-                        // special case for self
-                        
-                        // jump camera there instantly
-                        lastScreenViewCenter.x = posX * CELL_D;
-                        lastScreenViewCenter.y = posY * CELL_D;
-                        setViewCenterPosition( lastScreenViewCenter.x,
-                                               lastScreenViewCenter.y );
-                        
-                        // show loading screen again
-                        mFirstServerMessagesReceived = 2;
-                        mStartedLoadingFirstObjectSet = false;
-                        mDoneLoadingFirstObjectSet = false;
-                        mFirstObjectSetLoadingProgress = 0;
-                        mPlayerInFlight = true;
-                        }
                     }
                 }            
             }
@@ -16246,17 +16195,7 @@ void LivingLifePage::step() {
             mDoneLoadingFirstObjectSet = 
                 isLiveObjectSetFullyLoaded( &mFirstObjectSetLoadingProgress );
             
-            if( mDoneLoadingFirstObjectSet &&
-                game_getCurrentTime() - mStartedLoadingFirstObjectSetStartTime
-                < 1 ) {
-                // always show loading progress for at least 1 second
-                mDoneLoadingFirstObjectSet = false;
-                }
-            
-
             if( mDoneLoadingFirstObjectSet ) {
-                mPlayerInFlight = false;
-                
                 printf( "First map load done\n" );
                 
                 restartMusic( computeCurrentAge( ourLiveObject ),
@@ -16443,7 +16382,6 @@ void LivingLifePage::step() {
             finalizeLiveObjectSet();
             
             mStartedLoadingFirstObjectSet = true;
-            mStartedLoadingFirstObjectSetStartTime = game_getCurrentTime();
             }
         }
     
@@ -16525,8 +16463,6 @@ void LivingLifePage::makeActive( char inFresh ) {
 
     clearLocationSpeech();
 
-    mPlayerInFlight = false;
-    
     showFPS = false;
     showPing = false;
     
