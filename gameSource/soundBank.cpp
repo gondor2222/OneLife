@@ -866,7 +866,7 @@ static char getVolumeAndPan( doublePair inVectorFromCameraToSoundSource,
 
     // the above curve does what we want, but has discontinuities in slope
     // which are audible
-    volumeScale = sigmoidF( d );
+    volumeScale = sigmoidF( d * 0.5);
     
     if( volumeScale <= 0 ) {
         // don't play sound at all

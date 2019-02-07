@@ -142,6 +142,8 @@ static double pingSentTime = -1;
 static double pongDeltaTime = -1;
 static double pingDisplayStartTime = -1;
 
+static char hideTrees = false;
+
 
 typedef struct LocationSpeech {
         doublePair pos;
@@ -296,7 +298,7 @@ static int getHomeDir( doublePair inCurrentPlayerPos,
         a += 2 * M_PI;
         }
     
-    int index = lrint( 8 * a / ( 2 * M_PI ) );
+    int index = lrint( 16 * a / ( 2 * M_PI ) );
     
     return index;
     }
@@ -815,6 +817,7 @@ typedef enum messageType {
     MONUMENT_CALL,
     GRAVE,
     GRAVE_MOVE,
+    FLIGHT_DEST,
     FORCED_SHUTDOWN,
     PONG,
     COMPRESSED_MESSAGE,
@@ -920,6 +923,9 @@ messageType getMessageType( char *inMessage ) {
         }
     else if( strcmp( copy, "GM" ) == 0 ) {
         returnValue = GRAVE_MOVE;
+        }
+    else if( strcmp( copy, "FD" ) == 0 ) {
+        returnValue = FLIGHT_DEST;
         }
     else if( strcmp( copy, "PONG" ) == 0 ) {
         returnValue = PONG;
@@ -1130,11 +1136,19 @@ char *getNextServerMessage() {
                         }
                     }
                 else if( t == MAP_CHUNK ||
-                         t == PONG ) {
+                         t == PONG ||
+                         t == FLIGHT_DEST ) {
                     // map chunks are followed by compressed data
                     // they cannot be queued
                     
                     // PONG messages should be returned instantly
+                    
+                    // FLIGHT_DEST messages also should be returned instantly
+                    // otherwise, they will be queued and seen by 
+                    // the client after the corresponding MC message
+                    // for the new location.
+                    // which will invalidate the map around player's old
+                    // location
                     return message;
                     }
                 else {
@@ -2956,6 +2970,13 @@ void LivingLifePage::drawMapCell( int inMapI,
     int oID = mMap[ inMapI ];
 
     int objectHeight = 0;
+    char hideTree = false;
+    if (hideTrees && (oID == 99 || oID == 760 || oID == 65 || oID == 63 || oID == 530 || oID == 527 || oID == 49 ||
+                      oID == 48 || oID == 45 || oID == 406 || oID == 2145 || oID == 2142 || oID == 2135 || oID == 1925 ||
+                      oID == 1924 || oID == 1874 || oID == 153 || oID == 100 || oID == 2141 ||
+                      oID == 2136 || oID == 2159)) {
+        hideTree = true;
+    }
     
     if( oID > 0 ) {
         
@@ -3194,7 +3215,9 @@ void LivingLifePage::drawMapCell( int inMapI,
                              pos.y / CELL_D );
             }
         
-
+        if (hideTree) {
+            highlight = true;
+        }
         
         int numPasses = 1;
         int startPass = 0;
@@ -3213,10 +3236,17 @@ void LivingLifePage::drawMapCell( int inMapI,
                 startPass = 1;
                 }
             }
+        double opaq = 0.99f;
+        if (hideTree) {
+            opaq = 0.2f;
+        }
         
         for( int i=startPass; i<numPasses; i++ ) {
-            
+            if (hideTree && i == 0) {
+                continue;
+            }
             doublePair passPos = pos;
+            
             
             if( highlight ) {
                 
@@ -3226,11 +3256,16 @@ void LivingLifePage::drawMapCell( int inMapI,
                         break;
                     case 1:
                         // opaque portion
-                        startAddingToStencil( false, true, .99f );
+                        startAddingToStencil( false, true, opaq);
                         break;
                     case 2:
                         // first fringe
-                        startAddingToStencil( false, true, .07f );
+                        if (hideTree) {
+                            startAddingToStencil( false, false, 0.07f );
+                        }
+                        else {
+                            startAddingToStencil( false, true, .07f );
+                        }
                         break;
                     case 3:
                         // subtract opaque from fringe to get just first fringe
@@ -3292,7 +3327,7 @@ void LivingLifePage::drawMapCell( int inMapI,
                             false,
                             flip, -1,
                             false, false, false,
-                            getEmptyClothingSet(), NULL );
+                            getEmptyClothingSet(), NULL);
             }
         
 
@@ -3300,7 +3335,6 @@ void LivingLifePage::drawMapCell( int inMapI,
             
             
             float mainFade = .35f;
-        
             toggleAdditiveBlend( true );
             
             doublePair squarePos = passPos;
@@ -3318,9 +3352,7 @@ void LivingLifePage::drawMapCell( int inMapI,
                 case 1:
                     // opaque portion
                     startDrawingThroughStencil( false );
-
                     setDrawColor( 1, 1, 1, highlightFade * mainFade );
-                    
                     drawSquare( squarePos, squareRad );
                     
                     stopStencil();
@@ -3332,7 +3364,6 @@ void LivingLifePage::drawMapCell( int inMapI,
                 case 3:
                     // now first fringe is isolated in stencil
                     startDrawingThroughStencil( false );
-
                     setDrawColor( 1, 1, 1, highlightFade * mainFade * .5 );
 
                     drawSquare( squarePos, squareRad );
@@ -3346,7 +3377,7 @@ void LivingLifePage::drawMapCell( int inMapI,
                 case 5:
                     // now second fringe is isolated in stencil
                     startDrawingThroughStencil( false );
-                    
+
                     setDrawColor( 1, 1, 1, highlightFade * mainFade *.25 );
                     
                     drawSquare( squarePos, squareRad );
@@ -4291,7 +4322,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         drawSquare( lastScreenViewCenter, 100 );
         
         setDrawColor( 1, 1, 1, 1 );
-        doublePair pos = { 0, 0 };
+        doublePair pos = { lastScreenViewCenter.x, lastScreenViewCenter.y };
         
 
        
@@ -4339,6 +4370,9 @@ void LivingLifePage::draw( doublePair inViewCenter,
         else if( userReconnect ) {
             drawMessage( "waitingReconnect", pos );
             }
+        else if( mPlayerInFlight ) {
+            drawMessage( "waitingArrival", pos );
+            }
         else if( userTwinCode == NULL ) {
             drawMessage( "waitingBirth", pos );
             }
@@ -4368,27 +4402,30 @@ void LivingLifePage::draw( doublePair inViewCenter,
         
         if( mStartedLoadingFirstObjectSet ) {
             
-            pos.y = -100;
+            pos.y -= 100;
             drawMessage( "loadingMap", pos );
 
             // border
             setDrawColor( 1, 1, 1, 1 );
     
-            drawRect( -100, -220, 
-                      100, -200 );
+            drawRect( pos.x - 100, pos.y - 120, 
+
+                      pos.x + 100, pos.y - 100 );
 
             // inner black
             setDrawColor( 0, 0, 0, 1 );
             
-            drawRect( -98, -218, 
-                      98, -202 );
+            drawRect( pos.x - 98, pos.y - 118, 
+
+                      pos.x + 98, pos.y - 102 );
     
     
             // progress
             setDrawColor( .8, .8, .8, 1 );
-            drawRect( -98, -218, 
-                      -98 + mFirstObjectSetLoadingProgress * ( 98 * 2 ), 
-                      -202 );
+            drawRect( pos.x - 98, pos.y - 118, 
+                      pos.x - 98 + mFirstObjectSetLoadingProgress * ( 98 * 2 ), 
+
+                      pos.y - 102 );
             }
         
         return;
@@ -5728,7 +5765,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
 
         // then non-permanent, non-wall objects
-        for( int x=xStart; x<=xEnd; x++ ) {
+        for( int x=xStart; x<=xEnd; x++ ) { //TODO REMOVE TREES
             int mapI = y * mMapD + x;
             
             if( cellDrawn[ mapI ] ) {
@@ -6775,7 +6812,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
             
             distPos.y -= 47;
             
-            if( homeDist > 1000 ) {
+            if( homeDist > 200 ) { //was 2000
                 drawTopAsErased = false;
                 
                 setDrawColor( 0, 0, 0, 1 );
@@ -6786,7 +6823,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
                 
                 if( thousands < 1000 ) {
                     if( thousands < 10 ) {
-                        distString = autoSprintf( "%.1fK", thousands );
+                        distString = autoSprintf( "%.2fK", thousands );
                         }
                     else {
                         distString = autoSprintf( "%.0fK", 
@@ -10441,6 +10478,61 @@ void LivingLifePage::step() {
                         g->worldPos.x = posXNew;
                         g->worldPos.y = posYNew;
                         }    
+                    }
+                }            
+            }
+        else if( type == FLIGHT_DEST ) {
+            int posX, posY, playerID;
+            
+            int numRead = sscanf( message, "FD\n%d %d %d",
+                                  &playerID, &posX, &posY );
+            if( numRead == 3 ) {
+                applyReceiveOffset( &posX, &posY );
+                
+                LiveObject *flyingPerson = getLiveObject( playerID );
+                
+                if( flyingPerson != NULL ) {
+                    // move them there instantly
+                    flyingPerson->xd = posX;
+                    flyingPerson->yd = posY;
+                    
+                    flyingPerson->xServer = posX;
+                    flyingPerson->yServer = posY;
+                    
+                    flyingPerson->currentPos.x = posX;
+                    flyingPerson->currentPos.y = posY;
+                    
+                    flyingPerson->currentSpeed = 0;
+                    flyingPerson->currentGridSpeed = 0;
+                    flyingPerson->destTruncated = false;
+                    
+                    flyingPerson->currentMoveDirection.x = 0;
+                    flyingPerson->currentMoveDirection.y = 0;
+                    
+                    if( flyingPerson->pathToDest != NULL ) {
+                        delete [] flyingPerson->pathToDest;
+                        flyingPerson->pathToDest = NULL;
+                        }
+
+                    flyingPerson->inMotion = false;
+                        
+
+                    if( flyingPerson->id == ourID ) {
+                        // special case for self
+                        
+                        // jump camera there instantly
+                        lastScreenViewCenter.x = posX * CELL_D;
+                        lastScreenViewCenter.y = posY * CELL_D;
+                        setViewCenterPosition( lastScreenViewCenter.x,
+                                               lastScreenViewCenter.y );
+                        
+                        // show loading screen again
+                        mFirstServerMessagesReceived = 2;
+                        mStartedLoadingFirstObjectSet = false;
+                        mDoneLoadingFirstObjectSet = false;
+                        mFirstObjectSetLoadingProgress = 0;
+                        mPlayerInFlight = true;
+                        }
                     }
                 }            
             }
@@ -16195,7 +16287,17 @@ void LivingLifePage::step() {
             mDoneLoadingFirstObjectSet = 
                 isLiveObjectSetFullyLoaded( &mFirstObjectSetLoadingProgress );
             
+            if( mDoneLoadingFirstObjectSet &&
+                game_getCurrentTime() - mStartedLoadingFirstObjectSetStartTime
+                < 1 ) {
+                // always show loading progress for at least 1 second
+                mDoneLoadingFirstObjectSet = false;
+                }
+            
+
             if( mDoneLoadingFirstObjectSet ) {
+                mPlayerInFlight = false;
+                
                 printf( "First map load done\n" );
                 
                 restartMusic( computeCurrentAge( ourLiveObject ),
@@ -16382,6 +16484,7 @@ void LivingLifePage::step() {
             finalizeLiveObjectSet();
             
             mStartedLoadingFirstObjectSet = true;
+            mStartedLoadingFirstObjectSetStartTime = game_getCurrentTime();
             }
         }
     
@@ -16463,6 +16566,8 @@ void LivingLifePage::makeActive( char inFresh ) {
 
     clearLocationSpeech();
 
+    mPlayerInFlight = false;
+    
     showFPS = false;
     showPing = false;
     
@@ -19117,6 +19222,15 @@ void LivingLifePage::keyDown( unsigned char inASCII ) {
                                 pongDeltaTime = -1;
                                 pingDisplayStartTime = -1;
                                 }
+                            else if (strstr( typedText,
+                                             "/HIDETREES")
+                                    == typedText) {
+                                hideTrees = !hideTrees;
+                                playSoundSprite( loadSoundSprite( "otherSounds", "tutorialChime.aiff" ), 
+                                                     getSoundEffectsLoudness() * 0.2f,
+                                                     // middle
+                                                     0.5 );
+                            }
                             else {
                                 // filter hints
                                 char *filterString = 
