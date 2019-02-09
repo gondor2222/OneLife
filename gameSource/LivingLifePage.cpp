@@ -50,6 +50,7 @@
 
 #define MOVE_PANEL_X 640
 #define MOVE_PANEL_Y 360
+#define HOME_DIST_FAR 200
 
 extern int versionNumber;
 extern int dataVersionNumber;
@@ -182,7 +183,21 @@ static SimpleVector<HomePos> homePosStack;
 // used on reconnect to decide whether to delete old home positions
 static int lastPlayerID = -1;
 
-
+static void drawLines(Font* font, char* text, doublePair lineStart, double spacingScale) {
+    double lineSpacing = font->getFontHeight() / 2 + 14;
+    int numLines;
+    char **lines = split(text, "##", &numLines );
+    for (int l=0; l < numLines; l++) {
+        fprintf(stderr, "%s\n", lines[l]);
+    }
+    for( int l=0; l<numLines; l++ ) {
+        fprintf(stderr, "\"%s\"%2.2f %2.2f\n", lines[l], lineStart.x, lineStart.y);
+        font->drawString(lines[l], lineStart, alignLeft );
+        delete [] lines[l];
+        lineStart.y -= lineSpacing * spacingScale;
+        }
+    delete [] lines;
+}
 
 // returns pointer to record, NOT destroyed by caller, or NULL if 
 // home unknown
@@ -3238,7 +3253,7 @@ void LivingLifePage::drawMapCell( int inMapI,
             }
         double opaq = 0.99f;
         if (hideTree) {
-            opaq = 0.2f;
+            opaq = 0.1f;
         }
         
         for( int i=startPass; i<numPasses; i++ ) {
@@ -3269,7 +3284,7 @@ void LivingLifePage::drawMapCell( int inMapI,
                         break;
                     case 3:
                         // subtract opaque from fringe to get just first fringe
-                        startAddingToStencil( false, false, .99f );
+                        startAddingToStencil( false, false, opaq );
                         break;
                     case 4:
                         // second fringe
@@ -3352,7 +3367,14 @@ void LivingLifePage::drawMapCell( int inMapI,
                 case 1:
                     // opaque portion
                     startDrawingThroughStencil( false );
-                    setDrawColor( 1, 1, 1, highlightFade * mainFade );
+                    if (hideTree) {
+                        setDrawColor( 1, 1, 1, 0.15f);
+                    }
+                    
+                    else {
+                        setDrawColor( 1, 1, 1, highlightFade * mainFade );
+                        
+                    }
                     drawSquare( squarePos, squareRad );
                     
                     stopStencil();
@@ -6812,7 +6834,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
             
             distPos.y -= 47;
             
-            if( homeDist > 200 ) { //was 2000
+            if( homeDist > HOME_DIST_FAR ) { //was 2000
                 drawTopAsErased = false;
                 
                 setDrawColor( 0, 0, 0, 1 );
@@ -7422,21 +7444,21 @@ void LivingLifePage::draw( doublePair inViewCenter,
         curseTokenPos.x += 6;
         curseTokenFont->drawString( "X", curseTokenPos, alignCenter );
         
-        doublePair coordPosX = { lastScreenViewCenter.x + 701,
-                                lastScreenViewCenter.y - 316 - MOVE_PANEL_Y};
-        doublePair coordPosY = { lastScreenViewCenter.x + 701,
-                                lastScreenViewCenter.y - 346 - MOVE_PANEL_Y}; //TODO TEST
-        doublePair coordBoxPos = { lastScreenViewCenter.x + 721,
-                                lastScreenViewCenter.y - 326 - MOVE_PANEL_Y};
+        doublePair coordPos = { lastScreenViewCenter.x + 685,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+        doublePair coordBoxPos = { lastScreenViewCenter.x + 851,
+                                lastScreenViewCenter.y - 322 - MOVE_PANEL_Y};
         setDrawColor(1.0, 1.0, 1.0, 1.0);
-        drawSprite( mYumSlipSprites[0], coordBoxPos);
-        setDrawColor(1.0, 0.0, 0.0, 1.0);
+        drawSprite( mNotePaperSprite, coordBoxPos);
+        setDrawColor(0.0, 0.0, 0.0, 1.0);
+        
+        LiveObject* ourObject = getOurLiveObject();
         
         
-        char* coordStringX = autoSprintf("%d", mMapOffsetX);
-        char* coordStringY = autoSprintf("%d", mMapOffsetY);
-        pencilFont->drawString(coordStringX, coordPosX, alignLeft);
-        pencilFont->drawString(coordStringY, coordPosY, alignLeft);
+        char* coordString = autoSprintf("COORDINATES##%d##%d", (int)(ourObject->currentPos.x), (int)(ourObject->currentPos.y));
+        //char* coordStringY = autoSprintf("%6.1f", ourObject->currentPos.y);
+        drawLines(pencilFont, coordString, coordPos, 0.65); //TODO TEST
+        //pencilFont->drawString(coordStringY, coordPosY, alignLeft);
         
         
         // for now, we receive at most one update per life, so
@@ -9459,7 +9481,7 @@ void LivingLifePage::step() {
         if( homeArrow != -1 && ! tooClose ) {
             mHomeSlipPosTargetOffset.y = mHomeSlipHideOffset.y + 68;
             
-            if( homeDist > 1000 ) {
+            if( homeDist > HOME_DIST_FAR ) {
                 mHomeSlipPosTargetOffset.y += 20;
                 }
             }

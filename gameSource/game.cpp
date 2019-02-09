@@ -1781,6 +1781,7 @@ void drawFrame( char inUpdate ) {
                                 
                                 finalMessagePage->setMessageKey( 
                                     "upgradeMessage" );
+                                fprintf(stderr, "Current version is %d but required version is %d.\n", versionNumber, requiredVersion);
                                 
                                 currentGamePage->base_makeActive( true );
                                 }
