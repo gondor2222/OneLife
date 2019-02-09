@@ -1990,6 +1990,18 @@ static double heatUpdateSeconds = 2;
 
 
 
+// blend R-values multiplicatively, for layers
+// 1 - R( A + B ) = (1 - R(A)) * (1 - R(B))
+//
+// or
+//
+//R( A + B ) =  R(A) + R(B) - R(A) * R(B)
+static double rCombine( double inRA, double inRB ) {
+    return inRA + inRB - inRA * inRB;
+    }
+
+
+
 static void recomputeHeatMap( LiveObject *inPlayer ) {
             
     // what if we recompute it from scratch every time?
@@ -1998,7 +2010,9 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
         }
 
     float heatOutputGrid[ HEAT_MAP_D * HEAT_MAP_D ];
+    float biomeHeatGrid[ HEAT_MAP_D * HEAT_MAP_D ];
     float rGrid[ HEAT_MAP_D * HEAT_MAP_D ];
+    float rFloorGrid[ HEAT_MAP_D * HEAT_MAP_D ];
 
 
     GridPos pos = getPlayerPos( inPlayer );
@@ -2013,6 +2027,11 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
             }
         } 
 
+    
+    // air itself offers some insulation
+    // a vacuum panel has R-value that is 25x greater than air
+    float rAir = 0.04;
+    
 
     for( int y=0; y<HEAT_MAP_D; y++ ) {
         int mapY = pos.y + y - HEAT_MAP_D / 2;
@@ -2023,9 +2042,10 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
                     
             int j = y * HEAT_MAP_D + x;
             heatOutputGrid[j] = 0;
-            rGrid[j] = 0;
-                    
-            heatOutputGrid[j] +=
+            rGrid[j] = rAir;
+            rFloorGrid[j] = 0;
+
+            biomeHeatGrid[j] =
                 getBiomeHeatValue( getMapBiome( mapX, mapY ) );
 
 
@@ -2041,7 +2061,7 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
                 if( o->permanent ) {
                     // loose objects sitting on ground don't
                     // contribute to r-value (like dropped clothing)
-                    rGrid[j] = o->rValue;
+                    rGrid[j] = rCombine( rGrid[j], o->rValue );
                     }
 
 
@@ -2105,7 +2125,7 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
                     
             if( fO != NULL ) {
                 heatOutputGrid[j] += fO->heatValue;
-                rGrid[j] += fO->rValue;
+                rFloorGrid[j] = fO->rValue;
                 }
             }
         }
@@ -2149,23 +2169,11 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
     int playerMapIndex = 
         ( HEAT_MAP_D / 2 ) * HEAT_MAP_D +
         ( HEAT_MAP_D / 2 );
-            
+        
 
-    rGrid[ playerMapIndex ] += clothingR;
-            
-            
-    if( rGrid[ playerMapIndex ] > 1 ) {
-                
-        rGrid[ playerMapIndex ] = 1;
-        }
-            
-
-    // body itself produces 1 unit of heat
-    // (r value of clothing can hold this in
-    heatOutputGrid[ playerMapIndex ] += 1;
-            
-
+    
     // what player is holding can contribute heat
+    // add this to the grid, since it's "outside" the player's body
     if( inPlayer->holdingID > 0 ) {
         ObjectRecord *heldO = getObject( inPlayer->holdingID );
                 
@@ -2210,30 +2218,6 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
             }
         }
             
-    // clothing can contribute heat
-    for( int c=0; c<NUM_CLOTHING_PIECES; c++ ) {
-                
-        ObjectRecord *cO = clothingByIndex( inPlayer->clothing, c );
-            
-        if( cO != NULL ) {
-            heatOutputGrid[playerMapIndex ] += cO->heatValue;
-
-            // contained items in clothing can contribute
-            // heat, shielded by clothing r-values
-            double cRFactor = 1 - cO->rValue;
-
-            for( int s=0; 
-                 s < inPlayer->clothingContained[c].size(); s++ ) {
-                        
-                ObjectRecord *sO = 
-                    getObject( inPlayer->clothingContained[c].
-                               getElementDirect( s ) );
-                        
-                heatOutputGrid[ playerMapIndex ] += 
-                    sO->heatValue * cRFactor;
-                }
-            }
-        }
             
 
             
@@ -2249,12 +2233,25 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
     // http://demonstrations.wolfram.com/
     //        ACellularAutomatonBasedHeatEquation/
     // diags have way less contact area
-    double nWeights[8] = { 4, 4, 4, 4, 1, 1, 1, 1 };
+    // last weight is floor (full contact area just like side walls)
+    double nWeights[9] = { 4, 4, 4, 4, 1, 1, 1, 1, 4 };
             
-    double totalNWeight = 20;
+    double totalNWeight = 24;
             
             
     //double startTime = Time::getCurrentTime();
+
+    // start player heat map, all the way to edge, filled with biome
+    // heat values
+    // Edge will never change during sim (edge has less than 8 neighbors)
+    // so it will act like an infinite heat sink
+    for( int y=0; y<HEAT_MAP_D; y++ ) {
+        for( int x=0; x<HEAT_MAP_D; x++ ) {
+            int j = y * HEAT_MAP_D + x;
+            inPlayer->heatMap[j] = biomeHeatGrid[j];
+            }
+        }
+    
 
     for( int c=0; c<numCycles; c++ ) {
                 
@@ -2284,6 +2281,17 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
                     heatDelta += nWeights[n] * centerLeak * nLeak *
                         ( tempHeatGrid[ nj ] - centerOldHeat );
                     }
+                
+                // now 9th "neighbor" floor
+                float floorLeak = 1 - rFloorGrid[ j ];
+                
+                // ground (under floor) always has heat of matching biome value
+                // (never gains or loses heat, infinite)
+                float groundHeat = biomeHeatGrid[ j ];
+                
+                heatDelta += nWeights[8] * centerLeak * floorLeak *
+                    ( groundHeat - centerOldHeat );
+
                 
                 inPlayer->heatMap[j] = 
                     tempHeatGrid[j] + heatDelta / totalNWeight;
@@ -2345,9 +2353,68 @@ static void recomputeHeatMap( LiveObject *inPlayer ) {
       }
     */
 
-    float playerHeat = 
+    float envPlayerHeat = 
         inPlayer->heatMap[ playerMapIndex ];
+
+
+
+    // clothing can contribute heat
+    // apply this separate from heat grid above
+    float clothingHeat = 0;
+    for( int c=0; c<NUM_CLOTHING_PIECES; c++ ) {
+                
+        ObjectRecord *cO = clothingByIndex( inPlayer->clothing, c );
             
+        if( cO != NULL ) {
+            clothingHeat += cO->heatValue;
+
+            // contained items in clothing can contribute
+            // heat, shielded by clothing r-values
+            double cRFactor = 1 - cO->rValue;
+
+            for( int s=0; 
+                 s < inPlayer->clothingContained[c].size(); s++ ) {
+                        
+                ObjectRecord *sO = 
+                    getObject( inPlayer->clothingContained[c].
+                               getElementDirect( s ) );
+                        
+                clothingHeat += 
+                    sO->heatValue * cRFactor;
+                }
+            }
+        }
+
+
+
+
+
+
+    // simulate player "leaking" or gaining heat with environment
+
+    float playerHeat = targetHeat;
+
+    
+
+    for( int c=0; c<numCycles; c++ ) {        
+
+        // clothingR modulates heat lost (or gained) from environment
+        float clothingLeak = 1 - clothingR;
+
+        float heatDelta = clothingLeak * ( envPlayerHeat - playerHeat );
+        
+        playerHeat += heatDelta;
+
+
+        // player's body generates 1 unit of heat per sim step
+        playerHeat += 1;
+        
+        // player's clothing may generate heat each step
+        playerHeat += clothingHeat;
+        }
+
+
+    
     // printf( "Player heat = %f\n", playerHeat );
             
     // convert into 0..1 range, where 0.5 represents targetHeat
@@ -2573,9 +2640,10 @@ static char equal( GridPos inA, GridPos inB ) {
 
 
 static double distance( GridPos inA, GridPos inB ) {
-    return sqrt( ( inA.x - inB.x ) * ( inA.x - inB.x )
-                 +
-                 ( inA.y - inB.y ) * ( inA.y - inB.y ) );
+    double dx = (double)inA.x - (double)inB.x;
+    double dy = (double)inA.y - (double)inB.y;
+
+    return sqrt(  dx * dx + dy * dy );
     }
 
 
@@ -2816,8 +2884,8 @@ int sendMapChunkMessage( LiveObject *inO,
 
 
 double intDist( int inXA, int inYA, int inXB, int inYB ) {
-    int dx = inXA - inXB;
-    int dy = inYA - inYB;
+    double dx = (double)inXA - (double)inXB;
+    double dy = (double)inYA - (double)inYB;
 
     return sqrt(  dx * dx + dy * dy );
     }
@@ -4165,6 +4233,11 @@ static LiveObject *getHitPlayer( int inX, int inY,
 // for placement of tutorials out of the way 
 static int maxPlacementX = 5000000;
 
+// tutorial is alwasy placed 400,000 to East of furthest birth/Eve
+// location
+static int tutorialOffsetX = 400000;
+
+
 // each subsequent tutorial gets put in a diferent place
 static int tutorialCount = 0;
 
@@ -4749,7 +4822,7 @@ int processLoggedInPlayer( Socket *inSock,
         }
     else if( inTutorialNumber > 0 ) {
         
-        int startX = maxPlacementX * 2;
+        int startX = maxPlacementX + tutorialOffsetX;
         int startY = tutorialCount * 25;
 
         newObject.xs = startX;
