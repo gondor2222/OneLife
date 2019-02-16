@@ -45,6 +45,9 @@
 #include <stdlib.h>//#include <math.h>
 
 
+#include <sys/time.h>
+#include "PixelArray.h"
+
 #define MAP_D 64 //64
 #define MAP_NUM_CELLS 4096
 
@@ -167,7 +170,27 @@ static double pongDeltaTime = -1;
 static double pingDisplayStartTime = -1;
 
 static char hideTrees = false;
+static char drawMap = false;
 
+unsigned char* biomeRGBA = new unsigned char[BIOME_MAP_SIZE*BIOME_MAP_SIZE*4];
+SpriteHandle biomeMap = NULL;
+char* homeName = NULL;
+int originX = 0;
+int originY = 0;
+double lastFoodUpdate = 0;
+
+unsigned char biomeColors[10][3] = {
+    {80,230,60},
+    {50,120,200},
+    {250,230,0},
+    {80,80,80},
+    {200,255,255},
+    {150,120,40},
+    {60,100,40},
+    {255,0,255},
+    {255,0,255},
+    {0,0,0}
+};
 
 typedef struct LocationSpeech {
         doublePair pos;
@@ -190,8 +213,6 @@ static void clearLocationSpeech() {
     }
 
 
-
-
 // most recent home at end
 
 typedef struct {
@@ -210,16 +231,19 @@ static void drawLines(Font* font, char* text, doublePair lineStart, double spaci
     double lineSpacing = font->getFontHeight() / 2 + 14;
     int numLines;
     char **lines = split(text, "##", &numLines );
-    for (int l=0; l < numLines; l++) {
-        fprintf(stderr, "%s\n", lines[l]);
-    }
     for( int l=0; l<numLines; l++ ) {
-        fprintf(stderr, "\"%s\"%2.2f %2.2f\n", lines[l], lineStart.x, lineStart.y);
         font->drawString(lines[l], lineStart, alignLeft );
         delete [] lines[l];
         lineStart.y -= lineSpacing * spacingScale;
         }
     delete [] lines;
+}
+
+static void refreshBiomeMap() {    
+    //replaceSprite(biomeMap, biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE);
+    if (biomeMap != NULL) {
+        replaceSprite(biomeMap, biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE);
+    }
 }
 
 // returns pointer to record, NOT destroyed by caller, or NULL if 
@@ -1996,6 +2020,19 @@ LivingLifePage::LivingLifePage()
     if( SettingsManager::getIntSetting( "useSteamUpdate", 0 ) ) {
         mUsingSteam = true;
         }
+    for (int i = 0; i < BIOME_MAP_SIZE; i++) {
+        for (int j = 0; j < BIOME_MAP_SIZE; j++) {
+            int ridx = (BIOME_MAP_SIZE*i + j)*4;
+            int gidx = (BIOME_MAP_SIZE*i + j)*4 + 1;
+            int bidx = (BIOME_MAP_SIZE*i + j)*4 + 2;
+            int aidx = (BIOME_MAP_SIZE*i + j)*4 + 3;
+            biomeRGBA[ridx] = biomeColors[BIOME_UNKNOWN][0];
+            biomeRGBA[gidx] = biomeColors[BIOME_UNKNOWN][1];
+            biomeRGBA[bidx] = biomeColors[BIOME_UNKNOWN][2];
+            biomeRGBA[aidx] = 255;
+        }
+    }
+    biomeMap = fillSprite(biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE);
 
     mForceGroundClick = false;
     
@@ -6186,7 +6223,49 @@ void LivingLifePage::draw( doublePair inViewCenter,
     //                      lastChunkCenter, alignCenter );
     
     
-
+    if (drawMap) { //TODO DRAW MAP
+        if (biomeMap != NULL) {
+            setDrawColor(1.0, 1.0, 1.0, 0.8);
+            doublePair mapPos = {lastScreenViewCenter.x - BIOME_MAP_SIZE/2, lastScreenViewCenter.y};
+            LiveObject* ourObject = getOurLiveObject();
+            int ourX = ourObject->currentPos.x;
+            int ourY = ourObject->currentPos.y;
+            char outOfRange = 0;
+            if (ourX > BIOME_MAP_SIZE/2) {
+                ourX = BIOME_MAP_SIZE/2;
+                outOfRange = 1;
+            }
+            else if (ourX < -BIOME_MAP_SIZE/2) {
+                ourX = -BIOME_MAP_SIZE/2;
+                outOfRange = 1;
+            }
+            if (ourY > BIOME_MAP_SIZE/2) {
+                ourY = BIOME_MAP_SIZE/2;
+                outOfRange = 1;
+            }
+            else if (ourY < -BIOME_MAP_SIZE/2) {
+                ourY = -BIOME_MAP_SIZE/2;
+                outOfRange = 1;
+            }
+            doublePair iconPos = {lastScreenViewCenter.x - BIOME_MAP_SIZE/2 + handwritingFont->getFontHeight()/10 + 2.5 * ourX,
+                                  lastScreenViewCenter.y + 2.5 * ourY + handwritingFont->getFontHeight()/4};
+            doublePair mapHomePos = {lastScreenViewCenter.x - BIOME_MAP_SIZE/2 + handwritingFont->getFontHeight()/10 + 2.5 * originX,
+                                  lastScreenViewCenter.y + 2.5 * originY + handwritingFont->getFontHeight()/4};
+            drawSprite(biomeMap, mapPos, 2.5);
+            if (!outOfRange) {
+                setDrawColor(1.0, 0.0, 0.0, 1.0);
+                
+            }
+            else {
+                struct timeval tp;
+                gettimeofday(&tp, NULL);
+                long ms = tp.tv_sec * 1000 + tp.tv_usec / 1000;
+                setDrawColor(1.0, 0.0, 0.0, 0.3*sin(ms/200.0) + 0.7);
+            }
+            handwritingFont->drawString(".", iconPos, alignCenter);
+            handwritingFont->drawString("x", mapHomePos, alignCenter);
+        }
+    }
 
 
 
@@ -7641,7 +7720,15 @@ void LivingLifePage::draw( doublePair inViewCenter,
         curseTokenPos.x += 6;
         curseTokenFont->drawString( "X", curseTokenPos, alignCenter );
         
+        doublePair namePos =  { lastScreenViewCenter.x + 685,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
         doublePair coordPos = { lastScreenViewCenter.x + 685,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+        doublePair genPos = { lastScreenViewCenter.x + 895,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
+        doublePair agePos = { lastScreenViewCenter.x + 805,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+        doublePair foodPos = { lastScreenViewCenter.x + 895,
                                 lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
         doublePair coordBoxPos = { lastScreenViewCenter.x + 851,
                                 lastScreenViewCenter.y - 322 - MOVE_PANEL_Y};
@@ -7652,9 +7739,26 @@ void LivingLifePage::draw( doublePair inViewCenter,
         LiveObject* ourObject = getOurLiveObject();
         
         
-        char* coordString = autoSprintf("COORDINATES##%d##%d", (int)(ourObject->currentPos.x), (int)(ourObject->currentPos.y));
-        //char* coordStringY = autoSprintf("%6.1f", ourObject->currentPos.y);
-        drawLines(pencilFont, coordString, coordPos, 0.65); //TODO TEST
+        char* coordString = autoSprintf("COORDS##%d##%d", (int)(ourObject->currentPos.x), (int)(ourObject->currentPos.y));
+        
+        double tempdiff = ourObject->heat - 0.5;
+        if(tempdiff < 0) {
+            tempdiff = -tempdiff;
+        }
+        struct timeval tp;
+        gettimeofday(&tp, NULL);
+        double time = tp.tv_sec + tp.tv_usec / 1e6;
+        double starvationTime = (ourObject->foodStore*(22-40*tempdiff)) - (time - lastFoodUpdate);
+        
+        char* nameString = autoSprintf("NAME##%s", ourObject->name != NULL ? ourObject->name: "UNNAMED");
+        char* ageString = autoSprintf("AGE##%2.1f", ourObject->age);
+        char* foodString = autoSprintf("STARVE IN##%3d S", (int)(starvationTime));
+        char* genString = autoSprintf("GEN##%d", ourLiveObject->lineage.size());
+        drawLines(pencilFont, nameString, namePos, 0.65);
+        drawLines(pencilFont, coordString, coordPos, 0.65);
+        drawLines(pencilFont, genString, genPos, 0.65);//TODO TEST
+        drawLines(pencilFont, ageString, agePos, 0.65);
+        drawLines(pencilFont, foodString, foodPos, 0.65);
         //pencilFont->drawString(coordStringY, coordPosY, alignLeft);
         
         
@@ -11062,8 +11166,7 @@ void LivingLifePage::step() {
  
             
                 // for now, binary chunk is actually just ASCII
-                binaryChunk[ binarySize ] = '\0';
-            
+                binaryChunk[ binarySize ] = '\0';   
                 
                 SimpleVector<char *> *tokens = 
                     tokenizeString( (char*)binaryChunk );
@@ -11100,6 +11203,26 @@ void LivingLifePage::step() {
                                 // our placement status cleared
                                 mMapPlayerPlacedFlags[mapI] = false;
                                 }
+                                
+                            // TODO FILL MAP
+                            int biomeMapX = cX + x;
+                            int biomeMapY = cY + y;
+                            //fprintf(stderr, "%d %d %d\n", mapX, mapY, mMapBiomes[mapI]);
+                            if (biomeMapX >= -BIOME_MAP_SIZE/2 && biomeMapX < BIOME_MAP_SIZE/2 && biomeMapY >= -BIOME_MAP_SIZE/2 && biomeMapY < BIOME_MAP_SIZE/2) {
+                                int idx = ((BIOME_MAP_SIZE/2 - biomeMapY - 1)*BIOME_MAP_SIZE + biomeMapX + BIOME_MAP_SIZE/2)*4;
+                                int ridx = idx;
+                                int gidx = idx + 1;
+                                int bidx = idx + 2;
+                                int aidx = idx + 3;
+                                int biome = mMapBiomes[mapI];
+                                biomeRGBA[ridx] = biomeColors[biome][0];
+                                biomeRGBA[gidx] = biomeColors[biome][1];
+                                biomeRGBA[bidx] = biomeColors[biome][2];
+                                if (aidx < 0 || aidx >= BIOME_MAP_SIZE * BIOME_MAP_SIZE * 4) {
+                                    fprintf(stderr, "Warning: aidx is %d. biomeMapX is %d, biomeMapY is %d, BIOME_MAP_SIZE is %d\n", aidx, biomeMapX, biomeMapY, BIOME_MAP_SIZE);
+                                }
+                                //biomeRGBA[aidx] = 255;
+                            }
 
                             mMapContainedStacks[mapI].deleteAll();
                             mMapSubContainedStacks[mapI].deleteAll();
@@ -11156,7 +11279,10 @@ void LivingLifePage::step() {
                                 }
                             }
                         }
-                    }   
+                    if (drawMap) {
+                        refreshBiomeMap();
+                        }
+                    }
                 
                 tokens->deallocateStringElements();
                 delete tokens;
@@ -13738,17 +13864,37 @@ void LivingLifePage::step() {
 
                     printf( "Got X X death message for our ID %d\n",
                             ourID );
-
+                    /*fprintf(stderr, "pixels = zeros(%d, %d, 3);\n", BIOME_MAP_SIZE, BIOME_MAP_SIZE);
+                    for (int c = 0; c < 3; c++) {
+                        fprintf(stderr, "pixels(:,:,%d) = [", c + 1);
+                        for (int i = 0; i < BIOME_MAP_SIZE; i++) {
+                            for (int j = 0; j < BIOME_MAP_SIZE; j++) {
+                                int idx = (i*BIOME_MAP_SIZE + j)*4 + c;
+                                fprintf(stderr, "%d ", biomeRGBA[idx]);
+                                if (j < BIOME_MAP_SIZE - 1) {
+                                    fprintf(stderr, " ");
+                                }
+                            }
+                            if (i < BIOME_MAP_SIZE - 1) {
+                                fprintf(stderr, ";\n");
+                            }
+                        }
+                        fprintf(stderr, "];\n");
+                    }*/
+                    memset(biomeRGBA, 0, BIOME_MAP_SIZE * BIOME_MAP_SIZE * 4);
+                    for (int idx = 0; idx < BIOME_MAP_SIZE * BIOME_MAP_SIZE; idx++) {
+                        biomeRGBA[idx*4 + 3] = 255;
+                    }
                     // get age after X X
                     char *xxPos = strstr( lines[i], "X X" );
                     
                     LiveObject *ourLiveObject = getOurLiveObject();
-                    
                     if( xxPos != NULL ) {
                         sscanf( xxPos, "X X %lf", &( ourLiveObject->age ) );
                         }
                     ourLiveObject->finalAgeSet = true;
-                    
+                    delete ourLiveObject->name;
+                    ourLiveObject->name = NULL;
 
                     if( mDeathReason != NULL ) {
                         delete [] mDeathReason;
@@ -15052,7 +15198,7 @@ void LivingLifePage::step() {
         else if( type == NAMES ) {
             int numLines;
             char **lines = split( message, "\n", &numLines );
-            
+            LiveObject* ourLiveObject = getOurLiveObject();
             if( numLines > 0 ) {
                 // skip first
                 delete [] lines[0];
@@ -15070,7 +15216,6 @@ void LivingLifePage::step() {
                         if( gameObjects.getElement(j)->id == id ) {
                             
                             LiveObject *existing = gameObjects.getElement(j);
-                            
                             if( existing->name != NULL ) {
                                 delete [] existing->name;
                                 }
@@ -15082,6 +15227,13 @@ void LivingLifePage::step() {
                                 char *nameStart = &( firstSpace[1] );
                                 
                                 existing->name = stringDuplicate( nameStart );
+                                if (existing->id == ourLiveObject->id) {
+                                    //fprintf(stderr, "We were renamed to %s", nameStart);
+                                    if (homeName != NULL) {
+                                        delete homeName;
+                                        homeName = NULL;
+                                        }
+                                    }
                                 }
                             
                             break;
@@ -15344,6 +15496,9 @@ void LivingLifePage::step() {
                     ourLiveObject->foodStore = foodStore;
                     ourLiveObject->foodCapacity = foodCapacity;
                     ourLiveObject->lastSpeed = lastSpeed;
+                    struct timeval tp;
+                    gettimeofday(&tp, NULL);
+                    lastFoodUpdate = tp.tv_sec + tp.tv_usec / 1e6;
                     
 
                     if( mCurrentLastAteString != NULL ) {                    
@@ -19229,6 +19384,14 @@ void LivingLifePage::keyDown( unsigned char inASCII ) {
                 setSignal( "twinCancel" );
                 }
             break;
+        case 'm':
+            if( ! mSayField.isFocused() ) {
+                drawMap = !drawMap;
+                if (drawMap) {
+                    refreshBiomeMap();
+                }
+            }
+            break;
         /*
         case 'b':
             blackBorder = true;
@@ -19541,8 +19704,125 @@ void LivingLifePage::specialKeyDown( int inKeyCode ) {
         // dead
         return;
         }
-
-    if( inKeyCode == MG_KEY_UP ||
+    if( inKeyCode == MG_KEY_F5) {
+        if (biomeMap != NULL) {
+            if (homeName == NULL) {
+                homeName = new char[100];
+                LiveObject* ourObject = getOurLiveObject();
+                if (ourObject->name == NULL) {
+                    sprintf(homeName, "savedHomes/%d_unnamed.tga", ourObject->id);
+                }
+                else {
+                    sprintf(homeName, "savedHomes/%d_%s.tga", ourObject->id, ourObject->name);
+                    int len = strlen(homeName);
+                    for (int i = 0; i < len; i++) {
+                        if (homeName[i] == ' ') {
+                            homeName[i] = '_';
+                        }
+                    }
+                }
+            }
+            fprintf(stderr, "Saving home as %s\n", homeName);
+            int success = PixelArray::saveImage(homeName, biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE, originX, originY, false);
+            if (success == 0) {
+                playSoundSprite( loadSoundSprite( "sounds", "193.aiff" ), 
+                                                     getSoundEffectsLoudness() * 0.2f,
+                                                     // middle
+                                                     0.5 );
+            }
+            else {
+                playSoundSprite( loadSoundSprite( "sounds", "235.aiff" ), 
+                                                     getSoundEffectsLoudness() * 0.2f,
+                                                     // middle
+                                                     0.5 );
+            }
+            
+        }
+    }
+    else if (inKeyCode == MG_KEY_F6) {
+        DIR *dir = opendir("savedHomes/");
+        struct dirent *ent;
+        while ((ent = readdir(dir)) != NULL) {
+            
+            if(ent->d_name[0] != '.') {
+                char path[100];
+                sprintf(path, "savedHomes/%s", ent->d_name);
+                char newpath[100];
+                sprintf(newpath, "savedHomes/a_%s", ent->d_name);
+                fprintf(stderr, "%s\n", path);
+                PixelArray arr = PixelArray(path, false);
+                if (arr.pixels == NULL) {
+                    fprintf(stderr, "This image's pixels array is NULL\n");
+                }
+                else {
+                    if (abs(originX) < BIOME_MAP_SIZE/4 && abs(originY) < BIOME_MAP_SIZE/4
+                    && abs(arr.originX) < BIOME_MAP_SIZE/4 && abs(arr.originY) < BIOME_MAP_SIZE/4) {
+                        //attempt to compare the maps
+                        int numMismatches = 0;
+                        int numComparisons = 0;
+                        for (int i = -50; i < 50 && numMismatches < 25; i++) {
+                            for (int j = -50; j < 50 && numMismatches < 25; j++) {
+                                int idx_current = ((BIOME_MAP_SIZE/2 - (j - originY))*BIOME_MAP_SIZE + (i - originX) + BIOME_MAP_SIZE/2)*4;
+                                int idx_loaded = ((BIOME_MAP_SIZE/2 - (j - arr.originY))*BIOME_MAP_SIZE + (i - arr.originX) + BIOME_MAP_SIZE/2)*4;
+                                unsigned char colors_current[3] = {biomeRGBA[idx_current], biomeRGBA[idx_current +1], biomeRGBA[idx_current + 2]};
+                                unsigned char colors_loaded[3] = {arr.pixels[idx_loaded], arr.pixels[idx_loaded + 1], arr.pixels[idx_loaded + 2]};
+                                if (colors_current[0] + colors_current[1] + colors_current[2] > 0 &&
+                                    colors_loaded[0] + colors_loaded[1] + colors_loaded[2] > 0) {
+                                    numComparisons++;
+                                    for (int c = 0; c < 3; c++) {
+                                        if (colors_current[c] != colors_loaded[c]) {
+                                            numMismatches++;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (numComparisons > 30 * 30 && numMismatches < numComparisons / 100) {
+                            fprintf(stderr, "Map %s matches!\n", path);
+                            for (int i = 0; i < BIOME_MAP_SIZE; i++) {
+                                for (int j = 0; j < BIOME_MAP_SIZE; j++) {
+                                    int idx = (BIOME_MAP_SIZE*i + j)*4;
+                                    if (biomeRGBA[idx] + biomeRGBA[idx+1] + biomeRGBA[idx+2] == 0) { //unknown, try to use record
+                                        int loadedIndex = (BIOME_MAP_SIZE*(i - originY + arr.originY) + (j  - originX + arr.originX)) * 4;
+                                        if (loadedIndex >= 0 && loadedIndex < BIOME_MAP_SIZE * BIOME_MAP_SIZE * 4) {
+                                            int loadedR = arr.pixels[loadedIndex];
+                                            int loadedG = arr.pixels[loadedIndex+1];
+                                            int loadedB = arr.pixels[loadedIndex+2];
+                                            if (loadedR + loadedG + loadedB > 0) { //loaded map has this pixel and we don't
+                                            biomeRGBA[idx] = loadedR;
+                                            biomeRGBA[idx+1] = loadedG;
+                                            biomeRGBA[idx+2] = loadedB;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            refreshBiomeMap();
+                            playSoundSprite( loadSoundSprite( "sounds", "465.aiff" ), 
+                                                     getSoundEffectsLoudness() * 0.2f,
+                                                     // middle
+                                                     0.5 );
+                        }
+                        else if (numComparisons < 30 * 30) {
+                            fprintf(stderr, "Not enough information to compare to map %s\n", path);
+                        }
+                    }
+                    else {
+                        fprintf(stderr, "Origin does not satisfy comparison requirements");
+                    }
+                    
+                    arr.~PixelArray();
+                }
+            }
+        }
+    }
+    else if (inKeyCode == MG_KEY_F8) {
+        LiveObject* ourObject = getOurLiveObject();
+        originX = ourObject->currentPos.x;
+        originY = ourObject->currentPos.y; 
+    }
+    else if( inKeyCode == MG_KEY_UP ||
         inKeyCode == MG_KEY_DOWN ) {
         if( ! mSayField.isFocused() && inKeyCode == MG_KEY_UP ) {
             if( mSentChatPhrases.size() > 0 ) {
