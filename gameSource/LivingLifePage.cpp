@@ -179,6 +179,8 @@ int originX = 0;
 int originY = 0;
 double lastFoodUpdate = 0;
 
+SimpleVector<int> ourChildren;
+
 unsigned char biomeColors[10][3] = {
     {80,230,60},
     {50,120,200},
@@ -389,6 +391,7 @@ char *getRelationName( LiveObject *inOurObject, LiveObject *inTheirObject ) {
     int cousinRemovedNum = 0;
     
     char found = false;
+
 
     for( int i=0; i<theirLin.size(); i++ ) {
         if( theirLin.getElementDirect( i ) == ourID ) {
@@ -2109,12 +2112,12 @@ LivingLifePage::LivingLifePage()
     mNotePaperHideOffset.y = -420 - MOVE_PANEL_Y;
 
 
-    mHomeSlipHideOffset.x = 0;
+    mHomeSlipHideOffset.x = -MOVE_PANEL_X;
     mHomeSlipHideOffset.y = -360 - MOVE_PANEL_Y;
 
 
     for( int i=0; i<NUM_YUM_SLIPS; i++ ) {    
-        mYumSlipHideOffset[i].x = -600;
+        mYumSlipHideOffset[i].x = -600 - MOVE_PANEL_X;
         mYumSlipHideOffset[i].y = -330 - MOVE_PANEL_Y;
         }
     
@@ -2128,10 +2131,10 @@ LivingLifePage::LivingLifePage()
     
 
     for( int i=0; i<3; i++ ) {    
-        mHungerSlipShowOffsets[i].x = -540;
+        mHungerSlipShowOffsets[i].x = -540 - MOVE_PANEL_X;
         mHungerSlipShowOffsets[i].y = -250 - MOVE_PANEL_Y;
     
-        mHungerSlipHideOffsets[i].x = -540;
+        mHungerSlipHideOffsets[i].x = -540 - MOVE_PANEL_X;
         mHungerSlipHideOffsets[i].y = -370 - MOVE_PANEL_Y;
         
         mHungerSlipWiggleTime[i] = 0;
@@ -2381,6 +2384,7 @@ void LivingLifePage::clearLiveObjects() {
         }
     
     gameObjects.deleteAll();
+    ourChildren.deleteAll();
     }
 
 
@@ -4251,7 +4255,7 @@ void LivingLifePage::drawHungerMaxFillLine( doublePair inAteWordsPos,
     
     
     
-    doublePair barPos = { lastScreenViewCenter.x - 590, 
+    doublePair barPos = { lastScreenViewCenter.x - 590 - MOVE_PANEL_X, 
                           lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
     barPos.x -= 12;
     barPos.y -= 10;
@@ -7684,6 +7688,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
     setDrawColor( 1, 1, 1, 1 );
     doublePair panelPos = lastScreenViewCenter;
     panelPos.y -= 242 + 32 + 16 + 6 + MOVE_PANEL_Y;
+    panelPos.x -= MOVE_PANEL_X;
     drawSprite( mGuiPanelSprite, panelPos );
 
     if( ourLiveObject != NULL &&
@@ -7713,27 +7718,35 @@ void LivingLifePage::draw( doublePair inViewCenter,
             }
 
         // show as a sigil to right of temp meter
-        doublePair curseTokenPos = { lastScreenViewCenter.x + 621, 
+        doublePair curseTokenPos = { lastScreenViewCenter.x + 621 - MOVE_PANEL_X, 
                                      lastScreenViewCenter.y - 316 - MOVE_PANEL_Y};
         curseTokenFont->drawString( "C", curseTokenPos, alignCenter );
         curseTokenFont->drawString( "+", curseTokenPos, alignCenter );
         curseTokenPos.x += 6;
         curseTokenFont->drawString( "X", curseTokenPos, alignCenter );
-        
-        doublePair namePos =  { lastScreenViewCenter.x + 685,
-                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
-        doublePair coordPos = { lastScreenViewCenter.x + 685,
-                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
-        doublePair genPos = { lastScreenViewCenter.x + 895,
-                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
-        doublePair agePos = { lastScreenViewCenter.x + 805,
-                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
-        doublePair foodPos = { lastScreenViewCenter.x + 895,
-                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
-        doublePair coordBoxPos = { lastScreenViewCenter.x + 851,
+        doublePair noteBoxPos = { lastScreenViewCenter.x + 245,
                                 lastScreenViewCenter.y - 322 - MOVE_PANEL_Y};
+        doublePair noteBoxPos2 = { lastScreenViewCenter.x + 695,
+                                lastScreenViewCenter.y - 322 - MOVE_PANEL_Y};
+        doublePair childrenPos = { lastScreenViewCenter.x + 80,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
+        doublePair childrenPos2 = { lastScreenViewCenter.x + 230,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
+                                
+        doublePair namePos =  { lastScreenViewCenter.x + 530,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
+        doublePair coordPos = { lastScreenViewCenter.x + 535,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+        doublePair genPos = { lastScreenViewCenter.x + 745,
+                                lastScreenViewCenter.y - 244 - MOVE_PANEL_Y};
+        doublePair agePos = { lastScreenViewCenter.x + 655,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+        doublePair foodPos = { lastScreenViewCenter.x + 745,
+                                lastScreenViewCenter.y - 304 - MOVE_PANEL_Y};
+
         setDrawColor(1.0, 1.0, 1.0, 1.0);
-        drawSprite( mNotePaperSprite, coordBoxPos);
+        drawSprite( mNotePaperSprite, noteBoxPos);
+        drawSprite( mNotePaperSprite, noteBoxPos2);
         setDrawColor(0.0, 0.0, 0.0, 1.0);
         
         LiveObject* ourObject = getOurLiveObject();
@@ -7754,11 +7767,58 @@ void LivingLifePage::draw( doublePair inViewCenter,
         char* ageString = autoSprintf("AGE##%2.1f", ourObject->age);
         char* foodString = autoSprintf("STARVE IN##%3d S", (int)(starvationTime));
         char* genString = autoSprintf("GEN##%d", ourLiveObject->lineage.size());
+        char childrenString1 [512];
+        char childrenString2 [512];
+        
+        int idx = 0;
+        idx += sprintf(childrenString1, "CHILDREN##");
+        char* targetString = childrenString1;
+        for (int i = 0; i < 10 && i < ourChildren.size(); i++) {
+            int numLines;
+            char* targetString = childrenString1;
+            if (i == 5) {
+                targetString[idx] = '\0';
+                targetString = childrenString2;
+                idx = 0;
+            }
+            LiveObject* child = getLiveObject(ourChildren.getElementDirect(i));
+            if (child == NULL) {
+                idx += sprintf(targetString + idx, "-DEAD-##");
+                continue;
+            }
+            if (child->name == NULL) {
+                idx += sprintf(targetString + idx, "UNNAMED ");
+            }
+            else {
+                char **names = split(child->name, " ", &numLines);
+                idx += sprintf(targetString + idx, "%s ", names[0]);
+            }
+            
+            if (getObject(child->displayID)->male) {
+                idx += sprintf(targetString + idx, "M ");
+            }
+            else {
+                idx += sprintf(targetString + idx, "F ");
+            }
+            if (child->finalAgeSet) {
+                idx += sprintf(targetString + idx, "DEAD##");
+            }
+            else {
+                idx += sprintf(targetString + idx, "%2.1f##", child->age);
+            }
+        }
+        targetString[idx] = '\0';
+        if (targetString == childrenString1) {
+            childrenString2[0] = '\0';
+        }
+        
         drawLines(pencilFont, nameString, namePos, 0.65);
         drawLines(pencilFont, coordString, coordPos, 0.65);
         drawLines(pencilFont, genString, genPos, 0.65);//TODO TEST
         drawLines(pencilFont, ageString, agePos, 0.65);
         drawLines(pencilFont, foodString, foodPos, 0.65);
+        drawLines(pencilFont, childrenString1, childrenPos, 0.65);
+        drawLines(pencilFont, childrenString2, childrenPos2, 0.65);
         //pencilFont->drawString(coordStringY, coordPosY, alignLeft);
         
         
@@ -7781,7 +7841,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         toggleMultiplicativeBlend( true );
 
         for( int i=0; i<ourLiveObject->foodCapacity; i++ ) {
-            doublePair pos = { lastScreenViewCenter.x - 590, 
+            doublePair pos = { lastScreenViewCenter.x - 590 - MOVE_PANEL_X, 
                                lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
         
             pos.x += i * 30;
@@ -7802,7 +7862,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
             }
         for( int i=ourLiveObject->foodCapacity; 
              i < ourLiveObject->maxFoodCapacity; i++ ) {
-            doublePair pos = { lastScreenViewCenter.x - 590, 
+            doublePair pos = { lastScreenViewCenter.x - 590 - MOVE_PANEL_X, 
                                lastScreenViewCenter.y - 334 - MOVE_PANEL_Y};
             
             pos.x += i * 30;
@@ -7820,7 +7880,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         
                 
         
-        doublePair pos = { lastScreenViewCenter.x + 546, 
+        doublePair pos = { lastScreenViewCenter.x + 546 - MOVE_PANEL_X, 
                            lastScreenViewCenter.y - 319 - MOVE_PANEL_Y};
 
         if( mCurrentArrowHeat != -1 ) {
@@ -7882,7 +7942,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
         
 
         for( int i=0; i<mOldDesStrings.size(); i++ ) {
-            doublePair pos = { lastScreenViewCenter.x, 
+            doublePair pos = { lastScreenViewCenter.x - MOVE_PANEL_X, 
                                lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
             float fade =
                 mOldDesFades.getElementDirect( i );
@@ -7892,7 +7952,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
                 mOldDesStrings.getElementDirect( i ), pos, alignCenter );
             }
 
-        doublePair yumPos = { lastScreenViewCenter.x - 480, 
+        doublePair yumPos = { lastScreenViewCenter.x - 480 - MOVE_PANEL_X, 
                               lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
         
         setDrawColor( 0, 0, 0, 1 );
@@ -7916,7 +7976,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
 
 
-        doublePair atePos = { lastScreenViewCenter.x, 
+        doublePair atePos = { lastScreenViewCenter.x - MOVE_PANEL_X, 
                               lastScreenViewCenter.y - 347 - MOVE_PANEL_Y};
         
         int shortestFill = 100;
@@ -8001,7 +8061,7 @@ void LivingLifePage::draw( doublePair inViewCenter,
 
             
             
-            doublePair pos = { lastScreenViewCenter.x, 
+            doublePair pos = { lastScreenViewCenter.x - MOVE_PANEL_X, 
                                lastScreenViewCenter.y - 313 - MOVE_PANEL_Y};
 
             char *des = NULL;
@@ -8404,6 +8464,37 @@ void LivingLifePage::handleOurDeath( char inDisconnect ) {
     // so sound tails are not still playing when we we get reborn
     fadeSoundSprites( 0.1 );
     setSoundLoudness( 0 );
+    
+    /*fprintf(stderr, "pixels = zeros(%d, %d, 3);\n", BIOME_MAP_SIZE, BIOME_MAP_SIZE);
+    for (int c = 0; c < 3; c++) {
+        fprintf(stderr, "pixels(:,:,%d) = [", c + 1);
+        for (int i = 0; i < BIOME_MAP_SIZE; i++) {
+            for (int j = 0; j < BIOME_MAP_SIZE; j++) {
+                int idx = (i*BIOME_MAP_SIZE + j)*4 + c;
+                fprintf(stderr, "%d ", biomeRGBA[idx]);
+                if (j < BIOME_MAP_SIZE - 1) {
+                    fprintf(stderr, " ");
+                }
+            }
+            if (i < BIOME_MAP_SIZE - 1) {
+                fprintf(stderr, ";\n");
+            }
+        }
+        fprintf(stderr, "];\n");
+    }*/
+    memset(biomeRGBA, 0, BIOME_MAP_SIZE * BIOME_MAP_SIZE * 4);
+    for (int idx = 0; idx < BIOME_MAP_SIZE * BIOME_MAP_SIZE; idx++) {
+        biomeRGBA[idx*4 + 3] = 255;
+    }
+    LiveObject* ourLiveObject = getOurLiveObject();
+    if (ourLiveObject->name != NULL) {
+        delete ourLiveObject->name;
+        ourLiveObject->name = NULL;
+    }
+    if (homeName != NULL) {
+        delete homeName;
+        homeName = NULL;
+    }
     }
 
 
@@ -13862,27 +13953,7 @@ void LivingLifePage::step() {
 
                     printf( "Got X X death message for our ID %d\n",
                             ourID );
-                    /*fprintf(stderr, "pixels = zeros(%d, %d, 3);\n", BIOME_MAP_SIZE, BIOME_MAP_SIZE);
-                    for (int c = 0; c < 3; c++) {
-                        fprintf(stderr, "pixels(:,:,%d) = [", c + 1);
-                        for (int i = 0; i < BIOME_MAP_SIZE; i++) {
-                            for (int j = 0; j < BIOME_MAP_SIZE; j++) {
-                                int idx = (i*BIOME_MAP_SIZE + j)*4 + c;
-                                fprintf(stderr, "%d ", biomeRGBA[idx]);
-                                if (j < BIOME_MAP_SIZE - 1) {
-                                    fprintf(stderr, " ");
-                                }
-                            }
-                            if (i < BIOME_MAP_SIZE - 1) {
-                                fprintf(stderr, ";\n");
-                            }
-                        }
-                        fprintf(stderr, "];\n");
-                    }*/
-                    memset(biomeRGBA, 0, BIOME_MAP_SIZE * BIOME_MAP_SIZE * 4);
-                    for (int idx = 0; idx < BIOME_MAP_SIZE * BIOME_MAP_SIZE; idx++) {
-                        biomeRGBA[idx*4 + 3] = 255;
-                    }
+
                     // get age after X X
                     char *xxPos = strstr( lines[i], "X X" );
                     
@@ -13891,8 +13962,7 @@ void LivingLifePage::step() {
                         sscanf( xxPos, "X X %lf", &( ourLiveObject->age ) );
                         }
                     ourLiveObject->finalAgeSet = true;
-                    delete ourLiveObject->name;
-                    ourLiveObject->name = NULL;
+
 
                     if( mDeathReason != NULL ) {
                         delete [] mDeathReason;
@@ -14086,7 +14156,6 @@ void LivingLifePage::step() {
 
                             delete nextObject->futureAnimStack;
                             delete nextObject->futureHeldAnimStack;
-
                             gameObjects.deleteElement( i );
                             break;
                             }
@@ -15129,6 +15198,18 @@ void LivingLifePage::step() {
                             }
                         other->lineage.push_back( cousinNum );
                         */
+                        if (other->lineage.size() > 0 && other->lineage.getElementDirect(0) == ourID) { //this is one of our children
+                            char inList = false;
+                            for (int i = 0; i < ourChildren.size(); i++) {
+                                if (ourChildren.getElementDirect(i) == other->id) {
+                                    inList = true;
+                                    break;
+                                }
+                            }
+                            if (!inList) {
+                                ourChildren.push_back(other->id);
+                            }
+                        }
                         other->relationName = getRelationName( ourObject,
                                                                other );
                         }
@@ -19721,7 +19802,7 @@ void LivingLifePage::specialKeyDown( int inKeyCode ) {
                 }
             }
             fprintf(stderr, "Saving home as %s\n", homeName);
-            int success = PixelArray::saveImage(homeName, biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE, originX, originY, false);
+            int success = PixelArray::saveImage(homeName, biomeRGBA, BIOME_MAP_SIZE, BIOME_MAP_SIZE, originX, originY, true);
             if (success == 0) {
                 playSoundSprite( loadSoundSprite( "sounds", "193.aiff" ), 
                                                      getSoundEffectsLoudness() * 0.2f,
@@ -19748,7 +19829,7 @@ void LivingLifePage::specialKeyDown( int inKeyCode ) {
                 char newpath[100];
                 sprintf(newpath, "savedHomes/a_%s", ent->d_name);
                 fprintf(stderr, "%s\n", path);
-                PixelArray arr = PixelArray(path, false);
+                PixelArray arr = PixelArray(path, true);
                 if (arr.pixels == NULL) {
                     fprintf(stderr, "This image's pixels array is NULL\n");
                 }
